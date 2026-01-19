@@ -14,9 +14,7 @@
   <p align="center">
     Command Line Tool to help exporting Issues and Attachments from Jira and import them as GitHub Issues
     <br />
-    <a href="https://github.com/phil91/jihub/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/phil91/jihub/issues">Request Feature</a>
+    Forked from : <a href="https://github.com/phil91/jihub">https://github.com/phil91/jihub</a>
   </p>
 </div>
 
@@ -31,11 +29,9 @@
   * [Usage](#usage)
     * [Create you Jira search query](#create-you-jira-search-query)
     * [Execute Jihub](#execute-jihub)
-  * [Roadmap](#roadmap)
   * [Known Limitations](#known-limitations)
   * [Contributing](#contributing)
   * [License](#license)
-  * [Contact](#contact)
 </details>
 
 ## About The Project
@@ -136,17 +132,6 @@ Please note that the "Required" column indicates whether a parameter is mandator
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-## Roadmap
-
-- [ ] Export to various providers
-- [ ] Make configuration easier
-- [ ] Enhance Logging
-- [ ] Make fields to export to github issues configurable
-
-See the [open issues](https://github.com/phil91/jihub/issues) for a full list of proposed features (and known issues).
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 ## Known Limitations
 
 Due to GitHub Api limitations the import of the issues to GitHub will pause for 20 seconds after 10 created issues before continuing with the next 10.
@@ -169,15 +154,6 @@ For further information on how to contribute, take a look at [Contributing](http
 ## License
 
 Distributed under the Apache-2.0 License. See [LICENSE](https://www.github.com/phil91/jihub/LICENSE) for more information.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-## Contact
-
-Feel free to always open a dicussion, or hit me up on LinkedIn
-
-Project Link: [https://github.com/phil91/jihub](https://github.com/phil91/jihub)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
