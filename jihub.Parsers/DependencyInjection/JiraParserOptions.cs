@@ -15,4 +15,4 @@ public class JiraParserOptions
     public string DescriptionTemplate { get; set; } = null!;
 }
 
-public record EmailMapping(string JiraMail, string GithubName);
+public record EmailMapping(string JiraUsername, string JiraMail, string GithubName);

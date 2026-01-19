@@ -92,6 +92,23 @@ namespace jihub.Base
             Default = false)]
         public bool LinkRelated { get; set; }
 
+        [Option(longName: "project-number", Required = false,
+            HelpText = "Number of the GitHub Project (v2) to add issues to.")]
+        public int? ProjectNumber { get; set; }
+
+        [Option(longName: "project-owner", Required = false,
+            HelpText = "Owner of the GitHub Project (if different from repo owner).")]
+        public string? ProjectOwner { get; set; }
+
+        [Option(longName: "additional-label", Required = false,
+            HelpText = "A static label to add to all imported issues.")]
+        public string? AdditionalLabel { get; set; }
+
+        [Option(longName: "link-prs", Required = false,
+            HelpText = "If set the related pull requests will be linked in the description.",
+            Default = false)]
+        public bool LinkPrs { get; set; }
+
         /// <summary>
         /// Checks the options if everything is correct
         /// </summary>
@@ -107,6 +124,11 @@ namespace jihub.Base
             if (Export && (string.IsNullOrWhiteSpace(UploadRepo) || string.IsNullOrWhiteSpace(ImportOwner)))
             {
                 throw new ConfigurationException("Upload repo and import owner must be set if the assets should be imported");
+            }
+
+            if (ProjectNumber.HasValue && string.IsNullOrWhiteSpace(ProjectOwner))
+            {
+                ProjectOwner = Owner;
             }
         }
     }

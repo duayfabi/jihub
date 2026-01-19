@@ -10,6 +10,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\jihub.Github\jihub.Github.csproj" />
+      <ProjectReference Include="..\jihub.Jira\jihub.Jira.csproj" />
     </ItemGroup>
 
 </Project>

@@ -1,6 +1,4 @@
-﻿using System.Runtime.Serialization;
-
-namespace jihub.Base;
+﻿namespace jihub.Base;
 
 /// <inheritdoc />
 public class ConfigurationException : Exception
@@ -13,9 +11,4 @@ public class ConfigurationException : Exception
 
     /// <inheritdoc />
     public ConfigurationException(string message, Exception inner) : base(message, inner) { }
-
-    /// <inheritdoc />
-    protected ConfigurationException(
-        SerializationInfo info,
-        StreamingContext context) : base(info, context) { }
 }

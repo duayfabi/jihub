@@ -6,4 +6,5 @@ public record GithubAssetContent(GithubAsset Content);
 
 public record GithubAsset(
     [property: JsonPropertyName("html_url")] string Url,
+    [property: JsonPropertyName("download_url")] string DownloadUrl,
     string Name);

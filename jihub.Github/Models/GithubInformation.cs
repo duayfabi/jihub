@@ -14,12 +14,16 @@ public record GithubContent
     string Name,
     [property: JsonPropertyName("html_url")]
     string Url,
+    [property: JsonPropertyName("download_url")]
+    string DownloadUrl,
     string Type
 );
 
 public record GitHubIssue
 (
-    int Id,
+    long Id,
+    [property: JsonPropertyName("node_id")]
+    string NodeId,
     int Number,
     string Title,
     string? Body,
@@ -47,3 +51,5 @@ public record GitHubMilestone(
     [property: JsonPropertyName("due_on")]
     string? DueOn
 );
+
+

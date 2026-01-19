@@ -4,6 +4,10 @@ obj/
 riderModule.iml
 /_ReSharper.Caches/
 .idea/
+.bruno
+.direnv
+.envrc
+appsettings.json
 
 .DS_Store
 jihub.sln.DotSettings.user

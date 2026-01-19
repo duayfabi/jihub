@@ -23,7 +23,7 @@ public static class JiraServiceCollectionExtension
         baseUrl = baseUrl.EndsWith("/") ? baseUrl : $"{baseUrl}/";
         services.AddHttpClient(nameof(JiraService), c =>
         {
-            c.BaseAddress = new Uri($"{baseUrl}rest/api/2/search");
+            c.BaseAddress = new Uri(baseUrl);
             c.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", auth);
         });
         services.AddHttpClient($"{nameof(JiraService)}Download", c =>

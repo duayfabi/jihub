@@ -3,6 +3,7 @@ using jihub.Base;
 using jihub.Github.Models;
 using jihub.Github.Services;
 using jihub.Jira;
+using jihub.Jira.DependencyInjection;
 using jihub.Jira.Models;
 using jihub.Parsers.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -19,13 +20,15 @@ public class JiraParser : IJiraParser
     private readonly IGithubService _githubService;
     private readonly IJiraService _jiraService;
     private readonly ParserSettings _settings;
+    private readonly JiraServiceSettings _jiraSettings;
 
-    public JiraParser(ILogger<JiraParser> logger, IGithubService githubService, IJiraService jiraService, IOptions<ParserSettings> options)
+    public JiraParser(ILogger<JiraParser> logger, IGithubService githubService, IJiraService jiraService, IOptions<ParserSettings> options, IOptions<JiraServiceSettings> jiraOptions)
     {
         _logger = logger;
         _githubService = githubService;
         _jiraService = jiraService;
         _settings = options.Value;
+        _jiraSettings = jiraOptions.Value;
     }
 
     public async Task<IEnumerable<CreateGitHubIssue>> ConvertIssues(IEnumerable<JiraIssue> jiraIssues, JihubOptions options, IEnumerable<GithubContent> content, List<GitHubLabel> labels, List<GitHubMilestone> milestones, CancellationToken cts)
@@ -45,22 +48,88 @@ public class JiraParser : IJiraParser
     private async Task<CreateGitHubIssue> CreateGithubIssue(JiraIssue jiraIssue, JihubOptions options, IEnumerable<GithubContent> content, List<GitHubLabel> existingLabels, List<GitHubMilestone> milestones, CancellationToken cts)
     {
         var (assets, linkedAttachments) = await HandleAttachments(jiraIssue, options, content, jiraIssue.Fields.Description, cts).ConfigureAwait(false);
-        var description = GetDescription(jiraIssue, options, linkedAttachments, assets);
-        var labels = await GetGithubLabels(jiraIssue, options, existingLabels, cts).ConfigureAwait(false);
         var state = GetGithubState(jiraIssue);
         var milestoneNumber = await GetMilestoneNumber(jiraIssue, options, milestones, cts).ConfigureAwait(false);
-        var mailMapping = _settings.Jira.EmailMappings.SingleOrDefault(x => x.JiraMail.Equals(jiraIssue.Fields.Assignee.Name, StringComparison.OrdinalIgnoreCase));
+        var mailMapping = jiraIssue.Fields.Assignee != null
+            ? _settings.Jira.EmailMappings.SingleOrDefault(x => x.JiraUsername.Equals(jiraIssue.Fields.Assignee.DisplayName, StringComparison.OrdinalIgnoreCase))
+            : null;
         var assignee = mailMapping != null ? Enumerable.Repeat(mailMapping.GithubName, 1) : Enumerable.Empty<string>();
 
+        var reporterName = jiraIssue.Fields.Reporter?.DisplayName ?? "N/A";
+
+        var description = GetDescription(jiraIssue, options, linkedAttachments, assets, reporterName);
+        var labels = await GetGithubLabels(jiraIssue, options, existingLabels, cts).ConfigureAwait(false);
+        var comments = GetGithubComments(jiraIssue);
+        var pullRequests = ExtractPullRequestReferences(jiraIssue, options);
+
         return new CreateGitHubIssue(
-            $"{jiraIssue.Fields.Summary} (ext: {jiraIssue.Key})",
+            $"{jiraIssue.Fields.Summary} (jira: {jiraIssue.Key})",
             description,
             milestoneNumber,
             state,
             labels.Select(x => x.Name),
             assignee,
-            assets
+            assets,
+            comments,
+            jiraIssue.Fields.Status.Name,
+            jiraIssue.Fields.Priority.Name,
+            pullRequests
         );
+    }
+
+    private IEnumerable<GitHubPullRequestReference> ExtractPullRequestReferences(JiraIssue jiraIssue, JihubOptions options)
+    {
+        if (!options.LinkPrs || jiraIssue.Fields.RemoteLinks == null)
+        {
+            return Enumerable.Empty<GitHubPullRequestReference>();
+        }
+
+        var prReferences = new List<GitHubPullRequestReference>();
+        foreach (var link in jiraIssue.Fields.RemoteLinks)
+        {
+            var url = link.Object.Url;
+            if (!url.Contains("github.com") || !url.Contains("/pull/"))
+            {
+                continue;
+            }
+
+            try
+            {
+                // Parse URL like: https://github.com/owner/repo/pull/123
+                var uri = new Uri(url);
+                var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                
+                if (segments.Length >= 4 && segments[2] == "pull" && int.TryParse(segments[3], out var prNumber))
+                {
+                    prReferences.Add(new GitHubPullRequestReference(
+                        segments[0],  // owner
+                        segments[1],  // repo
+                        prNumber,
+                        url
+                    ));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse PR URL: {Url}", url);
+            }
+        }
+
+        return prReferences;
+    }
+
+    private IEnumerable<string> GetGithubComments(JiraIssue jiraIssue)
+    {
+        return jiraIssue.Fields.Comment?.Comments?.Select(comment =>
+        {
+            var authorName = comment.Author?.DisplayName ?? "N/A";
+            if (!DateTime.TryParse(comment.Created, out var created))
+            {
+                created = DateTime.Now;
+            }
+
+            return $"*{authorName}* a écrit le {created:dd.MM.yyyy HH:mm} :\n\n{comment.Body}";
+        }) ?? Enumerable.Empty<string>();
     }
 
     private async Task<(List<GithubAsset>, List<(string, GithubAsset)> linkedAttachments)> HandleAttachments(JiraIssue jiraIssue, JihubOptions options, IEnumerable<GithubContent> githubContent, string description, CancellationToken cts)
@@ -72,7 +141,10 @@ public class JiraParser : IJiraParser
             var content = githubContent.SingleOrDefault(x => x.Name.Equals($"{jiraIssue.Key}-{attachment.Filename}", StringComparison.OrdinalIgnoreCase));
             if (!options.Export || content != null)
             {
-                assets.Add(new GithubAsset(content == null ? attachment.Url : content.Url, $"{jiraIssue.Key}-{attachment.Filename}"));
+                assets.Add(new GithubAsset(
+                    content == null ? attachment.Url : content.Url,
+                    content == null ? attachment.Url : content.DownloadUrl,
+                    $"{jiraIssue.Key}-{attachment.Filename}"));
                 continue;
             }
 
@@ -84,9 +156,9 @@ public class JiraParser : IJiraParser
                     .ConfigureAwait(false);
                 assets.Add(asset);
             }
-            catch
+            catch (Exception ex)
             {
-                _logger.LogError("Couldn't create asset: {AssetName}", attachment.Filename);
+                _logger.LogError(ex, "Couldn't create asset: {AssetName}. Error: {Error}", attachment.Filename, ex.Message);
             }
         }
 
@@ -111,7 +183,7 @@ public class JiraParser : IJiraParser
         return (assets, linkedAttachments);
     }
 
-    private string GetDescription(JiraIssue jiraIssue, JihubOptions options, ICollection<(string, GithubAsset)> attachmentsToReplace, IEnumerable<GithubAsset> assets)
+    private string GetDescription(JiraIssue jiraIssue, JihubOptions options, ICollection<(string, GithubAsset)> attachmentsToReplace, IEnumerable<GithubAsset> assets, string reporterName)
     {
         var description = _regex.Replace(jiraIssue.Fields.Description.Replace(@"\u{a0}", ""),
             x => ReplaceMatch(x, attachmentsToReplace, options.Link));
@@ -131,16 +203,35 @@ public class JiraParser : IJiraParser
 
         var linkAsContent = options.Link ? string.Empty : "!";
         var attachments = assets.Any() ?
-            string.Join(", ", assets.Select(a => $"{linkAsContent}[{a.Name}]({a.Url})")) :
+            string.Join(", ", assets.Select(a => $"{linkAsContent}[{a.Name}]({a.DownloadUrl})")) :
             "N/A";
 
-        return _settings.Jira.DescriptionTemplate
+        var prLinks = "N/A";
+        if (options.LinkPrs && jiraIssue.Fields.RemoteLinks != null)
+        {
+            var githubPrs = jiraIssue.Fields.RemoteLinks
+                .Where(link => link.Object.Url.Contains("github.com") && link.Object.Url.Contains("/pull/"))
+                .Select(link => $"[{link.Object.Title}]({link.Object.Url})");
+
+            if (githubPrs.Any())
+            {
+                prLinks = string.Join(", ", githubPrs);
+            }
+        }
+
+        var jiraLink = $"{_jiraSettings.JiraInstanceUrl.TrimEnd('/')}/browse/{jiraIssue.Key}";
+        var result = _settings.Jira.DescriptionTemplate
             .Replace("{{Description}}", description)
             .Replace("{{Components}}", components)
             .Replace("{{Sprints}}", sprints)
             .Replace("{{FixVersions}}", fixVersions)
             .Replace("{{StoryPoints}}", storyPoints)
-            .Replace("{{Attachments}}", attachments);
+            .Replace("{{Attachments}}", attachments)
+            .Replace("{{Reporter}}", reporterName)
+            .Replace("{{JiraLink}}", jiraLink)
+            .Replace("{{PullRequests}}", prLinks);
+
+        return result;
     }
 
     private async Task<IEnumerable<GitHubLabel>> GetGithubLabels(JiraIssue jiraIssue, JihubOptions options, List<GitHubLabel> existingLabels, CancellationToken cts)
@@ -148,13 +239,31 @@ public class JiraParser : IJiraParser
         var labels = jiraIssue.Fields.Labels
             .Select(x => new GitHubLabel(x, string.Empty, "c5c5c5"))
             .Concat(new GitHubLabel[]
-            {
-                new(
-                    jiraIssue.Fields.Issuetype.Name,
-                    jiraIssue.Fields.Issuetype.Description,
-                    "c5c5c5"
-                )
-            });
+        {
+            new(
+                $"type: {jiraIssue.Fields.Issuetype.Name}",
+                jiraIssue.Fields.Issuetype.Description?.Length > 100
+                    ? jiraIssue.Fields.Issuetype.Description[..97] + "..."
+                    : jiraIssue.Fields.Issuetype.Description ?? string.Empty,
+                "d4ecff"
+            ),
+            new(
+                $"status: {jiraIssue.Fields.Status.Name}",
+                $"Jira status: {jiraIssue.Fields.Status.Name}",
+                GetStatusColor(jiraIssue.Fields.Status.StatusCategory.ColorName)
+            ),
+            new(
+                $"priority: {jiraIssue.Fields.Priority.Name}",
+                $"Jira priority: {jiraIssue.Fields.Priority.Name}",
+                GetPriorityColor(jiraIssue.Fields.Priority.Name)
+            )
+        });
+
+        if (!string.IsNullOrEmpty(options.AdditionalLabel))
+        {
+            labels = labels.Concat(new[] { new GitHubLabel(options.AdditionalLabel, "Static label for import source", "d4c5f9") });
+        }
+
         var missingLabels = labels
             .Where(l => !existingLabels.Select(el => el.Name)
                 .Any(el => el.Equals(l.Name, StringComparison.OrdinalIgnoreCase)))
@@ -211,7 +320,7 @@ public class JiraParser : IJiraParser
         var linkAsContent = authorizedLink ? string.Empty : "!";
         var result = matchingAttachment == default ?
             $"{linkAsContent}[{url.Split("/").LastOrDefault()}]({url})" :
-            $"{linkAsContent}[{matchingAttachment.Asset.Name}]({matchingAttachment.Asset.Url})";
+            $"{linkAsContent}[{matchingAttachment.Asset.Name}]({matchingAttachment.Asset.DownloadUrl})";
         linkedAttachments.Remove(matchingAttachment);
         return result;
     }
@@ -228,5 +337,29 @@ public class JiraParser : IJiraParser
         }
 
         return $"[{link.Split("/").Last()}]({link})";
+    }
+
+    private static string GetPriorityColor(string priorityName)
+    {
+        return priorityName.ToLower() switch
+        {
+            "haute" or "high" or "critical" or "urgent" => "b60205",
+            "moyenne" or "medium" or "normal" => "fbca04",
+            "basse" or "low" or "trivial" => "0e8a16",
+            _ => "c5c5c5"
+        };
+    }
+
+    private static string GetStatusColor(string colorName)
+    {
+        return colorName?.ToLower() switch
+        {
+            "green" => "0e8a16",
+            "yellow" => "fbca04",
+            "medium-gray" => "d4c5f9",
+            "blue-gray" => "d4c5f9",
+            "red" => "b60205",
+            _ => "c5c5c5"
+        };
     }
 }

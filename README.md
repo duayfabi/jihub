@@ -44,6 +44,8 @@
 
 Additionally, `Jihub` offers an optional feature to export Jira attachments directly to a designated GitHub repository, further enhancing collaboration and consolidating project resources.
 
+**API Compatibility**: As of January 2026, `Jihub` uses Jira REST API v3 and is compatible with modern Jira Cloud instances. The project targets .NET 8.0 for optimal performance and long-term support.
+
 For detailed instructions on how to utilize `Jihub` effectively, please refer to the [Usage](#usage) section. Experience the convenience and efficiency of effortlessly migrating your Jira issues to GitHub with `Jihub`.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -57,6 +59,15 @@ To start using `Jihub`, please follow the steps below.
 Before executing `Jihub`, make sure you have the following prerequisites:
 
 - A GitHub Personal Access Token (PAT) for authentication.
+    - **Required Permissions**:
+        - **Repository**:
+            - Contents (Read & Write)
+            - Issues (Read & Write)
+            - Metadata (Read-Only)
+            - Pull Requests (Read & Write)
+        - **Organizations**:
+            - Members (Read-Only)
+            - Projects (Read & Write)
 - Write access to the github repository you want to import the issues to
 - Valid login credentials for a publicly accessible Jira instance.
 - OPTIONAL: If you want to export the jira attachments you need write access to the repository you want to import the attachments to.
@@ -77,7 +88,7 @@ To setup `Jihub`, just follow these steps:
 |                    | JiraUser             | Your jira username                |
 |                    | JiraPassword         | Your jira password               |
 | GitHub             | Token                | Your generated GitHub PAT               |
-| Parsers:Jira       | EmailMappings        | Mapping between JiraEmail and Github Name, should be in the following format: { "JiraMail": "test.mail.com", "GithubName": "Phil91" }               |
+| Parsers:Jira       | EmailMappings        | Mapping between JiraUsername and Github Name, should be in the following format: { "JiraUsername": "Beta tester", "GithubName": "Phil91" }               |
 | Parsers:Jira       | DescriptionTemplate  | Template for the Github description. Valid values currently: Description, Components, Sprints, FixVersions, StoryPoints, Attachments please make sure that those values are listed within {{}}               |
 
 
@@ -113,6 +124,13 @@ dotnet jihub.Worker.dll
 | UploadRepo         | -u         | --upload-repo   | No       |         | The repository where the Jira assets will be uploaded                                      |
 | ImportOwner        | -i         | --import-owner  | No       |         | The owner of the repository where the Jira assets should be uploaded                       |
 | ImportPath         | -p         | --import-path   | No       |         | The path of the directory where the Jira assets should be uploaded                       |
+| Branch             | -b         | --branch        | No       | main    | The branch of the repository common for attachments                                      |
+| LinkChildren       |            | --linkChildren  | No       | false   | If set, the children will be linked in the body                                            |
+| LinkRelated        |            | --linkRelated   | No       | false   | If set, the related issues will be linked in the comments                                 |
+| ProjectNumber      |            | --project-number| No       |         | Number of the GitHub Project (v2) to add issues to                                        |
+| ProjectOwner       |            | --project-owner | No       |         | Owner of the GitHub Project (if different from repo owner)                                |
+| AdditionalLabel    |            | --additional-label| No     |         | A static label to add to all imported issues                                              |
+| LinkPrs            |            | --link-prs      | No       | false   | If set, tries to find PR links (remote links & dev panel) and link them natively to the GitHub issue |
 
 Please note that the "Required" column indicates whether a parameter is mandatory or not, and the "Default" column shows the default value if not specified.
 

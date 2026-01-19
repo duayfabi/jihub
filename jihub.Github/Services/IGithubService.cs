@@ -1,4 +1,5 @@
-﻿using jihub.Github.Models;
+﻿using jihub.Base;
+using jihub.Github.Models;
 
 namespace jihub.Github.Services;
 
@@ -7,7 +8,7 @@ public interface IGithubService
     Task<GitHubInformation> GetRepositoryData(string owner, string repo, CancellationToken cts);
     Task<ICollection<GitHubLabel>> CreateLabelsAsync(string owner, string repo, IEnumerable<GitHubLabel> missingLabels, CancellationToken cts);
     Task<GitHubMilestone> CreateMilestoneAsync(string name, string owner, string repo, CancellationToken cts);
-    Task<IEnumerable<GitHubIssue>> CreateIssuesAsync(string owner, string repo, IEnumerable<CreateGitHubIssue> issues, CancellationToken cts);
+    Task<IEnumerable<GitHubIssue>> CreateIssuesAsync(string owner, string repo, IEnumerable<CreateGitHubIssue> issues, JihubOptions options, CancellationToken cts);
     Task<Committer> GetCommitter();
     Task<GithubAsset> CreateAttachmentAsync(string owner, string repo, string? importPath, string? branch, (string Hash, string FileContent) fileData, string name, CancellationToken cts);
     Task<IEnumerable<GithubContent>> GetRepoContent(string owner, string repo, string path, CancellationToken cts);
@@ -19,4 +20,8 @@ public interface IGithubService
     Task AddRelatesComment(string owner, string repo, Dictionary<string, List<string>> relatedIssues,
         IEnumerable<GitHubIssue> existingIssues, IEnumerable<GitHubIssue> createdIssues,
         CancellationToken cancellationToken);
+
+    Task AddIssueToProjectV2(string projectOwner, int projectNumber, GitHubIssue issue, string? status, string? priority, CancellationToken cts);
+
+    Task CommentOnPullRequest(string owner, string repo, int prNumber, string comment, CancellationToken cts);
 }

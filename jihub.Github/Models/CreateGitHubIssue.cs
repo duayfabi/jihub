@@ -13,5 +13,13 @@ public record CreateGitHubIssue
     [property: JsonPropertyName("assignees")]
     IEnumerable<string>? Assignees,
     [property: JsonIgnore]
-    IEnumerable<GithubAsset> Attachments
+    IEnumerable<GithubAsset> Attachments,
+    [property: JsonIgnore]
+    IEnumerable<string>? Comments,
+    [property: JsonIgnore]
+    string? OriginalStatus,
+    [property: JsonIgnore]
+    string? OriginalPriority,
+    [property: JsonIgnore]
+    IEnumerable<GitHubPullRequestReference>? PullRequests
 );
