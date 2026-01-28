@@ -58,4 +58,5 @@ import \
       --import-path "{{import_path}}" \
       --project-number {{project_number}} \
       --additional-label "{{additional_label}}" \
-      --link-prs
+      --link-prs \
+      --project-items-only

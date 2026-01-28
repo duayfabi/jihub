@@ -31,3 +31,7 @@ public record ProjectV2Item(string Id);
 public record UpdateProjectV2ItemResponse(UpdateProjectV2ItemPayload UpdateProjectV2ItemFieldValue);
 
 public record UpdateProjectV2ItemPayload(ProjectV2Item ProjectV2Item);
+
+public record AddProjectV2DraftIssueResponse(AddProjectV2DraftIssuePayload AddProjectV2DraftIssue);
+
+public record AddProjectV2DraftIssuePayload(ProjectV2Item ProjectItem);

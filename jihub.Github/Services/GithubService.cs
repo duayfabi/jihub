@@ -453,6 +453,38 @@ public class GithubService : IGithubService
         }
     }
 
+    public async Task CreateProjectDraftIssuesAsync(string projectOwner, int projectNumber, IEnumerable<CreateGitHubIssue> issues, CancellationToken cts)
+    {
+        if (_cachedProject == null)
+        {
+            _cachedProject = await GetProjectV2Metadata(projectOwner, projectNumber, cts).ConfigureAwait(false);
+        }
+
+        if (_cachedProject == null)
+        {
+            _logger.LogError("Could not find Project v2 {ProjectNumber} for {Owner}", projectNumber, projectOwner);
+            return;
+        }
+
+        foreach (var issue in issues)
+        {
+            var itemId = await AddDraftItemToProject(_cachedProject.Id, issue.Title, issue.Body, cts).ConfigureAwait(false);
+            if (itemId == null) continue;
+
+            // Set status
+            if (!string.IsNullOrEmpty(issue.OriginalStatus))
+            {
+                await SetProjectV2Field(itemId, "Status", issue.OriginalStatus, cts).ConfigureAwait(false);
+            }
+
+            // Set priority
+            if (!string.IsNullOrEmpty(issue.OriginalPriority))
+            {
+                await SetProjectV2Field(itemId, "Priority", issue.OriginalPriority, cts).ConfigureAwait(false);
+            }
+        }
+    }
+
     private async Task SetProjectV2Field(string itemId, string fieldName, string optionName, CancellationToken cts)
     {
         var field = _cachedProject!.Fields.Nodes.FirstOrDefault(f => f.Name.Equals(fieldName, StringComparison.OrdinalIgnoreCase));
@@ -526,6 +558,20 @@ mutation($projectId: ID!, $contentId: ID!) {
         var variables = new { projectId, contentId };
         var response = await PostGraphQL<AddProjectV2ItemResponse>(mutation, variables, cts).ConfigureAwait(false);
         return response?.AddProjectV2ItemById?.Item?.Id;
+    }
+
+    private async Task<string?> AddDraftItemToProject(string projectId, string title, string? body, CancellationToken cts)
+    {
+        _logger.LogInformation("Creating draft issue: {issue}", title);
+        var mutation = @"
+mutation($projectId: ID!, $title: String!, $body: String!) {
+  addProjectV2DraftIssue(input: {projectId: $projectId, title: $title, body: $body}) {
+    projectItem { id }
+  }
+}";
+        var variables = new { projectId, title, body = body ?? string.Empty };
+        var response = await PostGraphQL<AddProjectV2DraftIssueResponse>(mutation, variables, cts).ConfigureAwait(false);
+        return response?.AddProjectV2DraftIssue?.ProjectItem?.Id;
     }
 
     private async Task UpdateProjectV2ItemFieldValue(string projectId, string itemId, string fieldId, string optionId, CancellationToken cts)

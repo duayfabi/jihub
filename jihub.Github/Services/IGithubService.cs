@@ -23,5 +23,7 @@ public interface IGithubService
 
     Task AddIssueToProjectV2(string projectOwner, int projectNumber, GitHubIssue issue, string? status, string? priority, CancellationToken cts);
 
+    Task CreateProjectDraftIssuesAsync(string projectOwner, int projectNumber, IEnumerable<CreateGitHubIssue> issues, CancellationToken cts);
+
     Task CommentOnPullRequest(string owner, string repo, int prNumber, string comment, CancellationToken cts);
 }
