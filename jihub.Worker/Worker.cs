@@ -73,13 +73,7 @@ public class Worker : IHostedService
 
             var convertedIssues = await _jiraParser.ConvertIssues(jiraIssues.Where(x => !excludedJiraIssues.Any(e => e.Key == x.Key)), _jihubOptions, content, githubInformation.Labels.ToList(), githubInformation.Milestones.ToList(), cts).ConfigureAwait(false);
 
-            if (_jihubOptions.ProjectItemsOnly)
-            {
-                await _githubService.CreateProjectDraftIssuesAsync(_jihubOptions.ProjectOwner!, _jihubOptions.ProjectNumber!.Value, convertedIssues, cts).ConfigureAwait(false);
-                _logger.LogInformation("Migration to Project V2 items finished successfully.");
-                _hostApplicationLifetime.StopApplication();
-                return;
-            }
+
 
             var createdIssues = await _githubService.CreateIssuesAsync(_jihubOptions.Owner, _jihubOptions.Repo, convertedIssues, _jihubOptions, cts).ConfigureAwait(false);
 

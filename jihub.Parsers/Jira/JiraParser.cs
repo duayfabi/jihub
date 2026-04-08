@@ -138,13 +138,14 @@ public class JiraParser : IJiraParser
         var assets = new List<GithubAsset>();
         foreach (var attachment in jiraIssue.Fields.Attachment)
         {
-            var content = githubContent.SingleOrDefault(x => x.Name.Equals($"{jiraIssue.Key}-{attachment.Filename}", StringComparison.OrdinalIgnoreCase));
+            var sanitizedFilename = $"{jiraIssue.Key}-{attachment.Filename}".Replace(" ", "-");
+            var content = githubContent.SingleOrDefault(x => x.Name.Equals(sanitizedFilename, StringComparison.OrdinalIgnoreCase));
             if (!options.Export || content != null)
             {
                 assets.Add(new GithubAsset(
                     content == null ? attachment.Url : content.Url,
                     content == null ? attachment.Url : content.DownloadUrl,
-                    $"{jiraIssue.Key}-{attachment.Filename}"));
+                    sanitizedFilename));
                 continue;
             }
 
@@ -152,7 +153,7 @@ public class JiraParser : IJiraParser
             try
             {
                 var asset = await _githubService
-                    .CreateAttachmentAsync(options.ImportOwner!, options.UploadRepo!, options.ImportPath, options.Branch, fileData, $"{jiraIssue.Key}-{attachment.Filename}", cts)
+                    .CreateAttachmentAsync(options.ImportOwner!, options.UploadRepo!, options.ImportPath, options.Branch, fileData, sanitizedFilename, cts)
                     .ConfigureAwait(false);
                 assets.Add(asset);
             }
@@ -246,16 +247,6 @@ public class JiraParser : IJiraParser
                     ? jiraIssue.Fields.Issuetype.Description[..97] + "..."
                     : jiraIssue.Fields.Issuetype.Description ?? string.Empty,
                 "d4ecff"
-            ),
-            new(
-                $"status: {jiraIssue.Fields.Status.Name}",
-                $"Jira status: {jiraIssue.Fields.Status.Name}",
-                GetStatusColor(jiraIssue.Fields.Status.StatusCategory.ColorName)
-            ),
-            new(
-                $"priority: {jiraIssue.Fields.Priority.Name}",
-                $"Jira priority: {jiraIssue.Fields.Priority.Name}",
-                GetPriorityColor(jiraIssue.Fields.Priority.Name)
             )
         });
 
@@ -339,27 +330,4 @@ public class JiraParser : IJiraParser
         return $"[{link.Split("/").Last()}]({link})";
     }
 
-    private static string GetPriorityColor(string priorityName)
-    {
-        return priorityName.ToLower() switch
-        {
-            "haute" or "high" or "critical" or "urgent" => "b60205",
-            "moyenne" or "medium" or "normal" => "fbca04",
-            "basse" or "low" or "trivial" => "0e8a16",
-            _ => "c5c5c5"
-        };
-    }
-
-    private static string GetStatusColor(string colorName)
-    {
-        return colorName?.ToLower() switch
-        {
-            "green" => "0e8a16",
-            "yellow" => "fbca04",
-            "medium-gray" => "d4c5f9",
-            "blue-gray" => "d4c5f9",
-            "red" => "b60205",
-            _ => "c5c5c5"
-        };
-    }
 }

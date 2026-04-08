@@ -162,7 +162,7 @@ public class JiraService : IJiraService
         await contentStream.CopyToAsync(ms, cts).ConfigureAwait(false);
 
         var h = await sha512Hash.ComputeHashAsync(ms, cts).ConfigureAwait(false);
-        var c = ms.GetBuffer();
+        var c = ms.ToArray();
         var hash = Convert.ToBase64String(h);
         var content = Convert.ToBase64String(c);
         if (ms.Length != contentStream.Length || c.Length != contentStream.Length)

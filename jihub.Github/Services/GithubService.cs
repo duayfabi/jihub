@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Web;
 using jihub.Base;
 using jihub.Github.Models;
@@ -14,6 +15,7 @@ public class GithubService : IGithubService
     private const int delaySeconds = 20;
     private int _mutationCounter = 0;
     private ProjectV2? _cachedProject;
+    private readonly Dictionary<string, string> _defaultBranchCache = new();
 
     private async Task EnsureRateLimit(CancellationToken ct)
     {
@@ -25,7 +27,11 @@ public class GithubService : IGithubService
         }
     }
 
-    private static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
     private readonly ILogger<GithubService> _logger;
     private readonly HttpClient _httpClient;
 
@@ -299,7 +305,7 @@ public class GithubService : IGithubService
             if (result.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity && error.Contains("assignees", StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning("Couldn't assign issue: {issue}. Retrying without assignees. Original error: {Error}", issue.Title, error);
-                var issueWithoutAssignees = issue with { Assignees = null };
+                var issueWithoutAssignees = issue with { Assignees = Array.Empty<string>() };
                 result = await _httpClient.PostAsJsonAsync(url, issueWithoutAssignees, Options, ct).ConfigureAwait(false);
                 
                 if (!result.IsSuccessStatusCode)
@@ -376,16 +382,21 @@ public class GithubService : IGithubService
     {
         await EnsureRateLimit(cts).ConfigureAwait(false);
         var directory = importPath == null ? string.Empty : $"{importPath}/";
-        var url = $"repos/{owner}/{repo}/contents/{directory}{name}";
+        var sanitizedName = name.Replace(" ", "-");
+        var encodedPath = string.Join("/", $"{directory}{sanitizedName}".Split('/').Select(Uri.EscapeDataString));
+        var url = $"repos/{owner}/{repo}/contents/{encodedPath}";
+        var branchToUse = branch ?? await GetDefaultBranch(owner, repo, cts).ConfigureAwait(false);
         var content = new UploadFileContent(
             $"Upload file {name}",
-            HttpUtility.HtmlEncode(fileData.FileContent),
-            branch ?? "main"
+            fileData.FileContent,
+            branchToUse
         );
         var response = await _httpClient.PutAsJsonAsync(url, content, cts).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
+            var errorBody = await response.Content.ReadAsStringAsync(cts).ConfigureAwait(false);
+            _logger.LogError("Asset creation failed for {AssetName}. Status: {StatusCode}. Error: {Error}", name, response.StatusCode, errorBody);
             throw new("Asset creation failed");
         }
 
@@ -453,42 +464,22 @@ public class GithubService : IGithubService
         }
     }
 
-    public async Task CreateProjectDraftIssuesAsync(string projectOwner, int projectNumber, IEnumerable<CreateGitHubIssue> issues, CancellationToken cts)
+
+
+    private static readonly Dictionary<string, string> StatusMapping = new(StringComparer.OrdinalIgnoreCase)
     {
-        if (_cachedProject == null)
-        {
-            _cachedProject = await GetProjectV2Metadata(projectOwner, projectNumber, cts).ConfigureAwait(false);
-        }
-
-        if (_cachedProject == null)
-        {
-            _logger.LogError("Could not find Project v2 {ProjectNumber} for {Owner}", projectNumber, projectOwner);
-            return;
-        }
-
-        foreach (var issue in issues)
-        {
-            var itemId = await AddDraftItemToProject(_cachedProject.Id, issue.Title, issue.Body, cts).ConfigureAwait(false);
-            if (itemId == null) continue;
-
-            // Set status
-            if (!string.IsNullOrEmpty(issue.OriginalStatus))
-            {
-                await SetProjectV2Field(itemId, "Status", issue.OriginalStatus, cts).ConfigureAwait(false);
-            }
-
-            // Set priority
-            if (!string.IsNullOrEmpty(issue.OriginalPriority))
-            {
-                await SetProjectV2Field(itemId, "Priority", issue.OriginalPriority, cts).ConfigureAwait(false);
-            }
-        }
-    }
+        ["Open"] = "Backlog",
+        ["Resolved"] = "Done",
+    };
 
     private async Task SetProjectV2Field(string itemId, string fieldName, string optionName, CancellationToken cts)
     {
         var field = _cachedProject!.Fields.Nodes.FirstOrDefault(f => f.Name.Equals(fieldName, StringComparison.OrdinalIgnoreCase));
         if (field == null) return;
+
+        // Apply known mappings (e.g. Jira "Open" → GitHub Project "Backlog")
+        if (StatusMapping.TryGetValue(optionName, out var mappedName))
+            optionName = mappedName;
 
         var option = field.Options?.FirstOrDefault(o => o.Name.Equals(optionName, StringComparison.OrdinalIgnoreCase));
         if (option == null)
@@ -560,19 +551,7 @@ mutation($projectId: ID!, $contentId: ID!) {
         return response?.AddProjectV2ItemById?.Item?.Id;
     }
 
-    private async Task<string?> AddDraftItemToProject(string projectId, string title, string? body, CancellationToken cts)
-    {
-        _logger.LogInformation("Creating draft issue: {issue}", title);
-        var mutation = @"
-mutation($projectId: ID!, $title: String!, $body: String!) {
-  addProjectV2DraftIssue(input: {projectId: $projectId, title: $title, body: $body}) {
-    projectItem { id }
-  }
-}";
-        var variables = new { projectId, title, body = body ?? string.Empty };
-        var response = await PostGraphQL<AddProjectV2DraftIssueResponse>(mutation, variables, cts).ConfigureAwait(false);
-        return response?.AddProjectV2DraftIssue?.ProjectItem?.Id;
-    }
+
 
     private async Task UpdateProjectV2ItemFieldValue(string projectId, string itemId, string fieldId, string optionId, CancellationToken cts)
     {
@@ -636,5 +615,29 @@ mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
             var error = await result.Content.ReadAsStringAsync(cts).ConfigureAwait(false);
             _logger.LogWarning("Failed to comment on PR #{PrNumber}: {Error}. The PR link will only appear in the issue description.", prNumber, error);
         }
+    }
+    public async Task<string> GetDefaultBranch(string owner, string repo, CancellationToken cts)
+    {
+        var cacheKey = $"{owner}/{repo}";
+        if (_defaultBranchCache.TryGetValue(cacheKey, out var cachedBranch))
+        {
+            return cachedBranch;
+        }
+
+        var url = $"repos/{owner}/{repo}";
+        _logger.LogInformation("[GitHub] Requesting repository metadata for {owner}/{repo}", owner, repo);
+        var response = await _httpClient.GetAsync(url, cts).ConfigureAwait(false);
+        if (response.IsSuccessStatusCode)
+        {
+            var repoData = await response.Content.ReadFromJsonAsync<GitHubRepository>(Options, cts).ConfigureAwait(false);
+            if (repoData != null)
+            {
+                _defaultBranchCache[cacheKey] = repoData.DefaultBranch;
+                return repoData.DefaultBranch;
+            }
+        }
+
+        _logger.LogWarning("Couldn't retrieve repository metadata for {owner}/{repo}. Defaulting to 'main'.", owner, repo);
+        return "main";
     }
 }

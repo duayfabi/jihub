@@ -109,10 +109,7 @@ namespace jihub.Base
             Default = false)]
         public bool LinkPrs { get; set; }
 
-        [Option(longName: "project-items-only", Required = false,
-            HelpText = "If set only Project V2 Draft Items will be created instead of full GitHub Issues.",
-            Default = false)]
-        public bool ProjectItemsOnly { get; set; }
+
 
         /// <summary>
         /// Checks the options if everything is correct
@@ -136,10 +133,7 @@ namespace jihub.Base
                 ProjectOwner = Owner;
             }
 
-            if (ProjectItemsOnly && !ProjectNumber.HasValue)
-            {
-                throw new ConfigurationException($"{nameof(ProjectNumber)} must be set if {nameof(ProjectItemsOnly)} is true");
-            }
+
         }
     }
 }
